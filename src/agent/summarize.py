@@ -5,12 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from anthropic import Anthropic
-
-from .config import MODEL
+from .config import MODEL, get_client
 from .sources import Paper
-
-client = Anthropic()  # reads ANTHROPIC_API_KEY from the environment
 
 SUMMARY_SYSTEM = """You are a STEM research assistant helping a student write \
 lab reports and essays. You summarize academic papers accurately and never \
@@ -40,7 +36,7 @@ Return ONLY valid JSON with these keys:
 (empty list if none are stated)
 - "relevance": one sentence on when a student would cite this"""
 
-    resp = client.messages.create(
+    resp = get_client().messages.create(
         model=MODEL,
         max_tokens=600,
         system=SUMMARY_SYSTEM,
@@ -71,7 +67,7 @@ Write a 4-6 sentence synthesis that answers the research question using \
 only these sources. Cite claims inline with their number like [1], [2]. \
 Do not introduce facts that aren't in the sources above."""
 
-    resp = client.messages.create(
+    resp = get_client().messages.create(
         model=MODEL,
         max_tokens=800,
         system=SUMMARY_SYSTEM,

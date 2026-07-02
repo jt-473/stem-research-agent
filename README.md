@@ -37,13 +37,16 @@ python main.py doctor
 
 `doctor` tells you exactly what's set up and what isn't, in plain English.
 
-Then just run the app with no command for a guided, question-by-question mode.
-It asks what you're researching, which citation style your class uses, and
-whether you want quotes, then does the rest:
+Then pick whichever way of using it you like:
 
 ```bash
-python main.py
+python main.py web        # a local web page: type your question, click Research
+python main.py            # guided question-by-question mode in the terminal
 ```
+
+The web page is the easiest way in. It has a search box, a citation style
+picker, and shows the answer, quotes, citations, and charts on one page.
+Nothing to install beyond step 1, and it never leaves your computer.
 
 Prefer typing commands directly? Those are below.
 
@@ -66,6 +69,9 @@ python main.py cite "CRISPR off-target effects" --style apa
 # (reads the full PDF for real page numbers when the paper is open-access)
 python main.py quotes "CRISPR off-target effects" --style mla --focus "detection methods"
 
+# Extract the numbers from papers and chart them across studies
+python main.py data "caffeine reaction time improvement" --focus "reaction time"
+
 # See what each referencing style is for
 python main.py styles
 
@@ -73,7 +79,8 @@ python main.py styles
 python main.py doctor
 ```
 
-Briefs and figures land in `outputs/`.
+Briefs and figures land in `outputs/`. Search results are cached in
+`.cache/` for a day, so repeat runs are instant and don't re-hit the APIs.
 
 ### Referencing styles
 
@@ -96,17 +103,20 @@ perfectly clean, so eyeball citations before you hand work in.
 
 ```
 src/agent/
-  sources.py     paper retrieval (OpenAlex, arXiv) -> normalized Paper objects
-  fulltext.py    download an open-access PDF, read it, locate a quote's page
-  summarize.py   Claude: per-paper summaries + cross-paper synthesis
-  citations.py   format references + in-text cites in 6 styles
-  passages.py    Claude: pull verbatim quotable passages with page citations
-  charts.py      matplotlib chart generation
-  report.py      assemble everything into a Markdown brief
-  pipeline.py    the reliable straight-line flow
-  agent.py       agentic tool-calling loop (Claude drives; search/cite/quote/chart tools)
-  wizard.py      guided beginner mode (runs when you pass no command)
-  cli.py         command-line interface
+  sources.py       paper retrieval (OpenAlex, arXiv) -> normalized Paper objects
+  cache.py         day-long cache of search results (.cache/)
+  fulltext.py      download an open-access PDF, read it, locate a quote's page
+  summarize.py     Claude: per-paper summaries + cross-paper synthesis
+  citations.py     format references + in-text cites in 6 styles
+  passages.py      Claude: pull verbatim quotable passages with page citations
+  data_extract.py  Claude: pull quantitative results, chart them across studies
+  charts.py        matplotlib chart generation
+  report.py        assemble everything into a Markdown brief
+  pipeline.py      the reliable straight-line flow
+  agent.py         agentic loop (Claude drives; search/cite/quote/data/chart tools)
+  wizard.py        guided beginner mode (runs when you pass no command)
+  web.py + web/    local web interface (stdlib only, no Node needed)
+  cli.py           command-line interface
 ```
 
 Two ways to run the work:
@@ -119,10 +129,10 @@ Two ways to run the work:
 - [x] Quote specific passages with ready-to-paste citations
 - [x] Full-text PDF parsing so quotes get real page numbers (open-access papers)
 - [x] Guided beginner mode + `doctor` setup check
-- [ ] Pull quantitative data straight out of papers for charting
+- [x] Pull quantitative data straight out of papers for charting (`data` command)
+- [x] Result caching to cut repeat API cost
+- [x] Local web interface (`web` command)
 - [ ] PubMed and CrossRef sources
-- [ ] Result caching to cut repeat API cost
-- [ ] Web frontend (Next.js)
 
 ## Note on citations
 

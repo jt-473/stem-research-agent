@@ -11,12 +11,8 @@ from __future__ import annotations
 
 import json
 
-from anthropic import Anthropic
-
 from . import charts, citations, passages, sources
-from .config import DEFAULT_STYLE, MODEL
-
-client = Anthropic()
+from .config import DEFAULT_STYLE, MODEL, get_client
 
 TOOLS = [
     {
@@ -67,6 +63,21 @@ TOOLS = [
                 "focus": {"type": "string", "description": "What the quote should be about"},
                 "style": {"type": "string", "enum": list(citations.STYLES.keys())},
                 "n": {"type": "integer", "default": 3},
+            },
+            "required": ["paper_id"],
+        },
+    },
+    {
+        "name": "extract_data",
+        "description": "Pull the quantitative results out of a found paper "
+        "(reads the full PDF when open-access). Returns numbers with label, "
+        "value, unit, and the exact sentence each came from. Use before "
+        "make_chart when comparing results across papers.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "paper_id": {"type": "string", "description": "id from search_papers"},
+                "focus": {"type": "string", "description": "What kind of numbers to look for"},
             },
             "required": ["paper_id"],
         },
@@ -164,15 +175,27 @@ class _Session:
             )
             return json.dumps(quotes)
 
+        if name == "extract_data":
+            paper = self.papers.get(args["paper_id"])
+            if not paper:
+                return f"No paper with id {args['paper_id']}. Search first."
+            from .data_extract import extract_numbers
+
+            numbers = extract_numbers(paper, focus=args.get("focus", ""))
+            return json.dumps(numbers)[:12000]
+
         if name == "make_chart":
-            path = charts.chart_from_data(
-                x=args["x"],
-                y=args["y"],
-                kind=args.get("kind", "bar"),
-                title=args.get("title", ""),
-                xlabel=args.get("xlabel", ""),
-                ylabel=args.get("ylabel", ""),
-            )
+            try:
+                path = charts.chart_from_data(
+                    x=args["x"],
+                    y=args["y"],
+                    kind=args.get("kind", "bar"),
+                    title=args.get("title", ""),
+                    xlabel=args.get("xlabel", ""),
+                    ylabel=args.get("ylabel", ""),
+                )
+            except ValueError as exc:
+                return f"Chart error: {exc}"
             return f"Chart saved to {path}"
 
         return f"Unknown tool: {name}"
@@ -184,7 +207,7 @@ def run(question: str, max_turns: int = 10) -> str:
     messages = [{"role": "user", "content": question}]
 
     for _ in range(max_turns):
-        resp = client.messages.create(
+        resp = get_client().messages.create(
             model=MODEL,
             max_tokens=2000,
             system=SYSTEM,

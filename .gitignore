@@ -9,6 +9,9 @@ env/
 # Secrets
 .env
 
+# Cache
+.cache/
+
 # Generated output
 outputs/*.png
 outputs/*.md

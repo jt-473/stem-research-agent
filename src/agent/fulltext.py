@@ -73,18 +73,20 @@ def fetch_fulltext(paper: Paper, timeout: int = 45, max_bytes: int = 25_000_000)
         return None
 
     try:
-        resp = requests.get(paper.pdf_url, headers=HEADERS, timeout=timeout, stream=True)
-        resp.raise_for_status()
-        ctype = resp.headers.get("Content-Type", "")
-        if "pdf" not in ctype and not paper.pdf_url.lower().endswith(".pdf"):
-            # Landing page, not a PDF. Bail rather than parse HTML.
-            return None
+        with requests.get(
+            paper.pdf_url, headers=HEADERS, timeout=timeout, stream=True
+        ) as resp:
+            resp.raise_for_status()
+            ctype = resp.headers.get("Content-Type", "")
+            if "pdf" not in ctype and not paper.pdf_url.lower().endswith(".pdf"):
+                # Landing page, not a PDF. Bail rather than parse HTML.
+                return None
 
-        data = io.BytesIO()
-        for chunk in resp.iter_content(chunk_size=65536):
-            data.write(chunk)
-            if data.tell() > max_bytes:
-                return None  # too big, don't try to parse it
+            data = io.BytesIO()
+            for chunk in resp.iter_content(chunk_size=65536):
+                data.write(chunk)
+                if data.tell() > max_bytes:
+                    return None  # too big, don't try to parse it
 
         data.seek(0)
         reader = PdfReader(data)

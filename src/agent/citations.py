@@ -70,10 +70,10 @@ def _initials(given: list[str], sep: str = ".", space: str = " ") -> str:
 
 # --- author blocks per style -------------------------------------------------
 
-def _authors_harvard_apa(authors: list[str]) -> str:
-    """Surname, Initials. — used by Harvard and APA reference lists."""
+def _authors_harvard_apa(authors: list[str], amp: bool = False) -> str:
+    """Surname, Initials. Used by Harvard ("and") and APA ("&") lists."""
     if not authors:
-        return ""
+        return "Anon."
     formatted = []
     for name in authors[:20]:
         surname, given = _split_name(name)
@@ -81,12 +81,27 @@ def _authors_harvard_apa(authors: list[str]) -> str:
         formatted.append(f"{surname}, {inits}".strip())
     if len(formatted) == 1:
         return formatted[0]
-    return ", ".join(formatted[:-1]) + " and " + formatted[-1]
+    joiner = " & " if amp else " and "
+    return ", ".join(formatted[:-1]) + joiner + formatted[-1]
+
+
+def _short_authors(authors: list[str], style: str) -> str:
+    """In-text author block. 'et al.' only kicks in at three or more authors."""
+    if not authors:
+        return "Anon."
+    first = _split_name(authors[0])[0]
+    if len(authors) == 1:
+        return first
+    if len(authors) == 2:
+        second = _split_name(authors[1])[0]
+        joiner = " & " if style == "apa" else " and "
+        return f"{first}{joiner}{second}"
+    return f"{first} et al."
 
 
 def _authors_mla(authors: list[str]) -> str:
     if not authors:
-        return ""
+        return "Anon."
     surname, given = _split_name(authors[0])
     first = f"{surname}, {' '.join(given)}".strip().rstrip(",")
     if len(authors) == 1:
@@ -98,7 +113,7 @@ def _authors_mla(authors: list[str]) -> str:
 
 def _authors_chicago(authors: list[str]) -> str:
     if not authors:
-        return ""
+        return "Anon."
     surname, given = _split_name(authors[0])
     first = f"{surname}, {' '.join(given)}".strip().rstrip(",")
     # Authors after the first are written given-name-first.
@@ -112,6 +127,8 @@ def _authors_chicago(authors: list[str]) -> str:
 
 def _authors_numbered(authors: list[str]) -> str:
     """Initials-first form used by IEEE / Vancouver."""
+    if not authors:
+        return "Anon."
     formatted = []
     for name in authors[:6]:
         surname, given = _split_name(name)
@@ -151,7 +168,7 @@ def format_reference(paper: Paper, style: str = "harvard", number: int | None = 
     if style == "apa":
         vi = f"{vol}({iss})" if vol and iss else vol
         locus = ", ".join(b for b in (vi, pages) if b)
-        ref = f"{_authors_harvard_apa(paper.authors)} ({year}). {title}. {venue}"
+        ref = f"{_authors_harvard_apa(paper.authors, amp=True)} ({year}). {title}. {venue}"
         if locus:
             ref += f", {locus}"
         if doi:
@@ -223,8 +240,7 @@ def in_text(
     """
     style = _normalize(style)
     year = paper.year or "n.d."
-    surname = _split_name(paper.authors[0])[0] if paper.authors else "Anon"
-    etal = " et al." if len(paper.authors) > 1 else ""
+    who = _short_authors(paper.authors, style)
 
     if style in NUMBERED:
         n = number if number is not None else "n"
@@ -236,15 +252,13 @@ def in_text(
 
     if style == "mla":
         # MLA uses a page number with no comma and no year.
-        page = locator or ""
-        page = page.replace("p. ", "").replace("pp. ", "")
-        return f"({surname}{etal} {page})".replace("  ", " ").strip()
+        page = (locator or "").replace("pp. ", "").replace("p. ", "")
+        return f"({who} {page})" if page else f"({who})"
 
     if style == "chicago":
-        loc = f", {locator.replace('p. ', '').replace('pp. ', '')}" if locator else ""
-        return f"({surname}{etal} {year}{loc})"
+        loc = f", {locator.replace('pp. ', '').replace('p. ', '')}" if locator else ""
+        return f"({who} {year}{loc})"
 
     # harvard / apa
-    sep = ", " if style == "apa" else ", "
-    loc = f"{sep}{locator}" if locator else ""
-    return f"({surname}{etal}{sep}{year}{loc})"
+    loc = f", {locator}" if locator else ""
+    return f"({who}, {year}{loc})"

@@ -162,16 +162,38 @@ def search_arxiv(query: str, limit: int = 5) -> list[Paper]:
     return papers
 
 
+def _dedupe(papers: list[Paper]) -> list[Paper]:
+    """Drop duplicate papers across sources (same DOI, or same title)."""
+    seen: set[str] = set()
+    out: list[Paper] = []
+    for p in papers:
+        key = p.doi.lower() if p.doi else " ".join(p.title.lower().split())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+    return out
+
+
 def search(query: str, limit: int = 5, sources: list[str] | None = None) -> list[Paper]:
     """Search every requested source and merge the results.
 
     ``sources`` defaults to both OpenAlex and arXiv. Failures in one
     source are swallowed so a single API hiccup doesn't kill the run.
+    Results are cached for a day so reruns are instant and free.
     """
+    from . import cache
+
     sources = sources or ["openalex", "arxiv"]
+    cache_key = f"{query}|{limit}|{','.join(sorted(sources))}"
+    cached = cache.get("search", cache_key)
+    if cached is not None:
+        return [Paper(**row) for row in cached]
+
     runners = {"openalex": search_openalex, "arxiv": search_arxiv}
 
     merged: list[Paper] = []
+    failures = 0
     for name in sources:
         runner = runners.get(name)
         if not runner:
@@ -179,6 +201,13 @@ def search(query: str, limit: int = 5, sources: list[str] | None = None) -> list
         try:
             merged.extend(runner(query, limit=limit))
         except Exception as exc:  # keep going if one source is down
+            failures += 1
             print(f"[warn] {name} search failed: {exc}")
         time.sleep(0.34)  # be gentle with the free APIs
+
+    merged = _dedupe(merged)
+    # Only cache complete runs; a partial result from an outage shouldn't
+    # stick around for a day.
+    if merged and failures == 0:
+        cache.put("search", cache_key, [p.to_dict() for p in merged])
     return merged

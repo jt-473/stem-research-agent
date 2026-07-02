@@ -37,3 +37,21 @@ To fix it (one-time setup):
   3. Paste your key after ANTHROPIC_API_KEY=
 
 The 'search', 'cite', and 'styles' commands work without a key."""
+
+_client = None
+
+
+def get_client():
+    """Shared Anthropic client, created lazily on first LLM call.
+
+    Lazy so that importing any module never crashes without a key, and so
+    a missing key produces the plain-English help instead of an SDK error.
+    """
+    global _client
+    if _client is None:
+        if not has_api_key():
+            raise SystemExit(API_KEY_HELP)
+        from anthropic import Anthropic
+
+        _client = Anthropic()
+    return _client

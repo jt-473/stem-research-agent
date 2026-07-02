@@ -15,14 +15,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from anthropic import Anthropic
-
 from . import citations
-from .config import MODEL
+from .config import MODEL, get_client
 from .fulltext import FullText, fetch_fulltext
 from .sources import Paper
-
-client = Anthropic()
 
 # How much full text to send to the model per paper (rough token budget).
 MAX_FULLTEXT_CHARS = 18_000
@@ -73,7 +69,7 @@ Return ONLY valid JSON: a list of objects with keys:
 - "supports": one short phrase on what claim this quote backs up
 Return [] if nothing is worth quoting."""
 
-    resp = client.messages.create(
+    resp = get_client().messages.create(
         model=MODEL,
         max_tokens=900,
         system=PASSAGE_SYSTEM,

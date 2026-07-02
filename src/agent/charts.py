@@ -22,7 +22,8 @@ from .sources import Paper
 
 def _outfile(name: str) -> str:
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Microseconds included so two charts in the same second don't collide.
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     return os.path.join(OUTPUT_DIR, f"{name}-{stamp}.png")
 
 
@@ -38,6 +39,13 @@ def chart_from_data(
 
     ``kind`` is one of: bar, line, scatter.
     """
+    if not x or not y:
+        raise ValueError("Chart needs at least one data point.")
+    if len(x) != len(y):
+        raise ValueError(
+            f"x has {len(x)} values but y has {len(y)}; they must match."
+        )
+
     fig, ax = plt.subplots(figsize=(8, 5))
 
     if kind == "line":

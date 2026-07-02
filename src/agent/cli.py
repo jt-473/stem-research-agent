@@ -71,6 +71,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Quote from abstracts only; don't download PDFs for page numbers",
     )
 
+    p_data = sub.add_parser("data", help="Extract numbers from papers + compare chart")
+    p_data.add_argument("query")
+    p_data.add_argument("-n", "--limit", type=int, default=4)
+    p_data.add_argument("--focus", default="", help="What kind of numbers to look for")
+    p_data.add_argument(
+        "--no-fulltext", action="store_true",
+        help="Extract from abstracts only; don't download PDFs",
+    )
+
+    p_web = sub.add_parser("web", help="Open the local web interface")
+    p_web.add_argument("--port", type=int, default=8765)
+    p_web.add_argument("--no-browser", action="store_true", help="Don't auto-open a browser")
+
     sub.add_parser("styles", help="List and explain the referencing styles")
     sub.add_parser("doctor", help="Check your setup (deps, API key)")
     return parser
@@ -113,10 +126,49 @@ def main(argv: list[str] | None = None) -> int:
         from .sources import search
 
         papers = search(args.query, limit=args.limit)
+        if not papers:
+            print("No papers found. Try a broader query.")
+            return 1
         print(f"References ({args.style}):\n")
         for i, p in enumerate(papers, start=1):
             print(format_reference(p, args.style, number=i))
             print(f"    in-text: {in_text(p, args.style, number=i)}\n")
+        return 0
+
+    if args.command == "web":
+        from .web import serve
+
+        return serve(port=args.port, open_browser=not args.no_browser)
+
+    if args.command == "data":
+        if _needs_key():
+            return 1
+        from .data_extract import comparison_chart, extract_numbers
+        from .sources import search
+
+        papers = search(args.query, limit=args.limit)
+        if not papers:
+            print("No papers found. Try a broader query.")
+            return 1
+        all_numbers = []
+        for p in papers:
+            print(f"Reading: {p.title[:70]}")
+            rows = extract_numbers(p, focus=args.focus, use_fulltext=not args.no_fulltext)
+            all_numbers.extend(rows)
+        if not all_numbers:
+            print("\nNo clear quantitative results found in these papers.")
+            return 0
+        print(f"\nExtracted {len(all_numbers)} numbers:\n")
+        for r in all_numbers:
+            unit = f" {r['unit']}" if r["unit"] else ""
+            print(f"  {r['value']}{unit:<8} {r['label']}  [{r['paper'][:40]}]")
+            print(f"           from: \"{r['context'][:90]}\"")
+        chart = comparison_chart(all_numbers)
+        if chart:
+            print(f"\nComparison chart saved to: {chart}")
+        else:
+            print("\nNo unit was shared across two or more papers, so no "
+                  "comparison chart this time.")
         return 0
 
     if args.command == "quotes":
