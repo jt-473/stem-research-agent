@@ -18,3 +18,7 @@ MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
 
 # Where generated charts and reports are written.
 OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "outputs")
+
+# Default referencing style for citations. One of: harvard, apa, mla,
+# chicago, ieee, vancouver.
+DEFAULT_STYLE = os.environ.get("CITATION_STYLE", "harvard")

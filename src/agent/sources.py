@@ -36,6 +36,11 @@ class Paper:
     doi: str = ""
     citations: int | None = None
     source: str = ""
+    # Bibliographic fields needed by citation styles (best-effort per source).
+    venue: str = ""  # journal / conference / "arXiv preprint"
+    volume: str = ""
+    issue: str = ""
+    pages: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -80,6 +85,12 @@ def search_openalex(query: str, limit: int = 5) -> list[Paper]:
             for a in item.get("authorships", [])
             if a.get("author")
         ]
+        biblio = item.get("biblio") or {}
+        first, last = biblio.get("first_page"), biblio.get("last_page")
+        pages = f"{first}-{last}" if first and last else (first or "")
+        location = item.get("primary_location") or {}
+        venue = (location.get("source") or {}).get("display_name", "")
+
         papers.append(
             Paper(
                 title=item.get("title") or "(untitled)",
@@ -90,6 +101,10 @@ def search_openalex(query: str, limit: int = 5) -> list[Paper]:
                 doi=(item.get("doi") or "").replace("https://doi.org/", ""),
                 citations=item.get("cited_by_count"),
                 source="OpenAlex",
+                venue=venue or "",
+                volume=biblio.get("volume") or "",
+                issue=biblio.get("issue") or "",
+                pages=pages or "",
             )
         )
     return papers
@@ -115,6 +130,9 @@ def search_arxiv(query: str, limit: int = 5) -> list[Paper]:
         year = None
         if getattr(entry, "published_parsed", None):
             year = entry.published_parsed.tm_year
+        # arXiv id like "2401.01234" pulled from the entry URL for the venue line.
+        arxiv_id = entry.get("id", "").rsplit("/abs/", 1)[-1]
+        venue = f"arXiv preprint arXiv:{arxiv_id}" if arxiv_id else "arXiv preprint"
         papers.append(
             Paper(
                 title=entry.get("title", "(untitled)").replace("\n", " ").strip(),
@@ -125,6 +143,7 @@ def search_arxiv(query: str, limit: int = 5) -> list[Paper]:
                 doi=entry.get("arxiv_doi", ""),
                 citations=None,  # arXiv doesn't report citation counts
                 source="arXiv",
+                venue=venue,
             )
         )
     return papers
