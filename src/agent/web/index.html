@@ -15,7 +15,7 @@
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
     line-height: 1.55;
   }
-  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 80px; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 32px 20px 80px; }
   h1 { font-size: 1.6rem; margin: 0 0 4px; }
   .sub { color: var(--muted); margin: 0 0 28px; }
   .card {
@@ -23,13 +23,16 @@
     border-radius: 12px; padding: 20px; margin-bottom: 20px;
   }
   label { display: block; font-size: .85rem; color: var(--muted); margin: 14px 0 4px; }
-  input[type=text], select {
+  input[type=text], input[type=number], select {
     width: 100%; padding: 10px 12px; border-radius: 8px;
     border: 1px solid var(--border); background: var(--bg);
     color: var(--text); font-size: 1rem;
   }
+  /* Force readable dropdown options (some browsers default them to
+     dark-on-white, which made the styles invisible). */
+  select option { background: #191d33; color: #e8eaf6; }
   .row { display: flex; gap: 16px; flex-wrap: wrap; }
-  .row > div { flex: 1; min-width: 180px; }
+  .row > div { flex: 1; min-width: 150px; }
   button {
     margin-top: 20px; padding: 11px 22px; font-size: 1rem; border: 0;
     border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer;
@@ -41,7 +44,12 @@
   }
   .src { border-top: 1px solid var(--border); padding: 14px 0; }
   .src:first-child { border-top: 0; }
-  .src h3 { margin: 0 0 6px; font-size: 1rem; }
+  .src h3 { margin: 0 0 4px; font-size: 1rem; }
+  .meta { font-size: .8rem; color: var(--muted); margin-bottom: 6px; }
+  .tag {
+    display: inline-block; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 20px; padding: 0 8px; margin-right: 6px;
+  }
   .ref { font-size: .9rem; color: var(--muted); }
   .intext {
     display: inline-block; background: var(--bg); border: 1px solid var(--border);
@@ -49,6 +57,7 @@
   }
   a { color: var(--accent); }
   .spinner { color: var(--muted); }
+  .count { color: var(--muted); font-size: .9rem; margin: 0 0 10px; }
 </style>
 </head>
 <body>
@@ -65,10 +74,20 @@
         <select id="style"></select>
       </div>
       <div>
+        <label for="sort">Sort by</label>
+        <select id="sort"></select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
         <label for="limit">Papers per source</label>
         <select id="limit">
-          <option>3</option><option selected>5</option><option>8</option><option>10</option>
+          <option>5</option><option selected>10</option><option>15</option><option>25</option>
         </select>
+      </div>
+      <div>
+        <label for="yearFrom">From year (optional)</label>
+        <input type="number" id="yearFrom" placeholder="e.g. 2018" min="1900" max="2100">
       </div>
     </div>
     <button id="go">Find papers</button>
@@ -81,16 +100,33 @@
 <script>
 const $ = (id) => document.getElementById(id);
 
+const SORT_LABELS = {
+  relevance: "Most relevant",
+  newest: "Newest first",
+  oldest: "Oldest first",
+  cited: "Most cited",
+};
+
+function titleCase(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
 async function loadMeta() {
   try {
     const meta = await (await fetch("/api/meta")).json();
-    const sel = $("style");
+    const styleSel = $("style");
     for (const [key, desc] of Object.entries(meta.styles)) {
       const opt = document.createElement("option");
       opt.value = key;
-      opt.textContent = desc;
+      // Show the style name up front so it's obvious which is which.
+      opt.textContent = titleCase(key) + " — " + desc;
       if (key === meta.default_style) opt.selected = true;
-      sel.appendChild(opt);
+      styleSel.appendChild(opt);
+    }
+    const sortSel = $("sort");
+    for (const key of meta.sorts) {
+      const opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = SORT_LABELS[key] || titleCase(key);
+      sortSel.appendChild(opt);
     }
   } catch { /* meta is a nicety; the form still works */ }
 }
@@ -112,11 +148,17 @@ function render(data) {
   }
 
   if (data.sources && data.sources.length) {
+    box.appendChild(el("p", "count",
+      `${data.sources.length} papers, sorted by ${SORT_LABELS[data.sort] || data.sort}.`));
     const card = el("div", "card");
-    card.appendChild(el("h2", null, "Papers and citations"));
     data.sources.forEach((s) => {
       const div = el("div", "src");
       div.appendChild(el("h3", null, s.title + (s.year ? " (" + s.year + ")" : "")));
+      const meta = el("div", "meta");
+      meta.appendChild(el("span", "tag", s.source));
+      if (s.citations != null) meta.appendChild(el("span", "tag", s.citations + " citations"));
+      if (s.year) meta.appendChild(el("span", "tag", s.year));
+      div.appendChild(meta);
       div.appendChild(el("div", "ref", s.reference));
       div.appendChild(el("span", "intext", "in-text: " + s.in_text));
       if (s.url) {
@@ -128,7 +170,8 @@ function render(data) {
     });
     box.appendChild(card);
   } else {
-    box.appendChild(el("div", "notice", "No papers matched. Try broader keywords."));
+    box.appendChild(el("div", "notice", "No papers matched. Try broader keywords, "
+      + "or loosen the From-year filter."));
   }
 }
 
@@ -144,7 +187,9 @@ async function go() {
       body: JSON.stringify({
         question,
         style: $("style").value,
+        sort: $("sort").value,
         limit: parseInt($("limit").value, 10),
+        year_from: $("yearFrom").value || null,
       }),
     });
     render(await resp.json());

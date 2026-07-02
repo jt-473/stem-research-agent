@@ -11,8 +11,26 @@ import sys
 
 from .citations import STYLES
 from .config import DEFAULT_STYLE
+from .sources import SORT_OPTIONS
 
 STYLE_CHOICES = list(STYLES.keys())
+
+
+def _add_search_options(p) -> None:
+    """Flags shared by the search and cite commands."""
+    p.add_argument("-n", "--limit", type=int, default=8, help="Papers per source")
+    p.add_argument(
+        "--loose", action="store_true",
+        help="Don't require the query words to appear in each paper's title",
+    )
+    p.add_argument(
+        "--sort", choices=SORT_OPTIONS, default="relevance",
+        help="Order results: relevance, newest, oldest, or cited",
+    )
+    p.add_argument(
+        "--year-from", type=int, default=None, metavar="YEAR",
+        help="Only papers published in or after this year",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,17 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_search = sub.add_parser("search", help="Search papers across databases")
     p_search.add_argument("query")
-    p_search.add_argument("-n", "--limit", type=int, default=5)
-    p_search.add_argument(
-        "--loose", action="store_true",
-        help="Don't require the query words to appear in each paper's title",
-    )
+    _add_search_options(p_search)
 
     p_cite = sub.add_parser("cite", help="Search + format references in a style")
     p_cite.add_argument("query")
-    p_cite.add_argument("-n", "--limit", type=int, default=5)
     p_cite.add_argument("--style", choices=STYLE_CHOICES, default=DEFAULT_STYLE)
-    p_cite.add_argument("--loose", action="store_true", help="Skip the title-match filter")
+    _add_search_options(p_cite)
 
     p_web = sub.add_parser("web", help="Open the local web interface")
     p_web.add_argument("--port", type=int, default=8765)
@@ -71,10 +84,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "search":
         from .sources import search
 
-        papers = search(args.query, limit=args.limit, strict=not args.loose)
+        papers = search(
+            args.query, limit=args.limit, strict=not args.loose,
+            sort=args.sort, year_from=args.year_from,
+        )
         if not papers:
             print("No papers matched. Try broader words, or add --loose.")
             return 1
+        print(f"Found {len(papers)} papers (sorted by {args.sort}):\n")
         for p in papers:
             cites = f" · {p.citations} cites" if p.citations is not None else ""
             print(f"- [{p.source}{cites}] {p.title} ({p.year})")
@@ -85,11 +102,14 @@ def main(argv: list[str] | None = None) -> int:
         from .citations import format_reference, in_text
         from .sources import search
 
-        papers = search(args.query, limit=args.limit, strict=not args.loose)
+        papers = search(
+            args.query, limit=args.limit, strict=not args.loose,
+            sort=args.sort, year_from=args.year_from,
+        )
         if not papers:
             print("No papers matched. Try broader words, or add --loose.")
             return 1
-        print(f"References ({args.style}):\n")
+        print(f"{len(papers)} references ({args.style}, sorted by {args.sort}):\n")
         for i, p in enumerate(papers, start=1):
             print(format_reference(p, args.style, number=i))
             print(f"    in-text: {in_text(p, args.style, number=i)}\n")

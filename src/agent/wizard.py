@@ -46,6 +46,29 @@ def _pick_style() -> str:
     return DEFAULT_STYLE
 
 
+def _pick_sort() -> str:
+    from .sources import SORT_OPTIONS
+
+    labels = {
+        "relevance": "Most relevant (default)",
+        "newest": "Newest first",
+        "oldest": "Oldest first",
+        "cited": "Most cited",
+    }
+    options = list(SORT_OPTIONS)
+    print("\nHow should results be sorted?")
+    for i, key in enumerate(options, start=1):
+        print(f"  {i}. {labels[key]}")
+    choice = _ask("Pick a number", default="1")
+    try:
+        idx = int(choice) - 1
+        if 0 <= idx < len(options):
+            return options[idx]
+    except ValueError:
+        pass
+    return "relevance"
+
+
 def run_wizard() -> int:
     """Walk a first-time user through one search."""
     print(BANNER)
@@ -56,17 +79,18 @@ def run_wizard() -> int:
         question = _ask("What do you want to research")
 
     style = _pick_style()
+    sort = _pick_sort()
 
-    limit_raw = _ask("\nHow many papers per source", default="5")
+    limit_raw = _ask("\nHow many papers per source", default="10")
     try:
-        limit = max(1, min(15, int(limit_raw)))
+        limit = max(1, min(25, int(limit_raw)))
     except ValueError:
-        limit = 5
+        limit = 10
 
     from .sources import search
 
     print("\nSearching...\n")
-    papers = search(question, limit=limit)
+    papers = search(question, limit=limit, sort=sort)
     if not papers:
         print("No papers matched. Try broader words (keywords work better than "
               "full questions).")

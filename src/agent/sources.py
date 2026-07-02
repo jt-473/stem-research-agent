@@ -21,9 +21,9 @@ PUBMED_ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi
 PUBMED_EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 CROSSREF_URL = "https://api.crossref.org/works"
 
-# Which sources a plain search() hits. CrossRef is opt-in: its coverage is
-# huge but its records often lack abstracts, which the AI features rely on.
-DEFAULT_SOURCES = ["openalex", "arxiv", "pubmed"]
+# Which sources a plain search() hits. All four by default for the widest
+# coverage of papers.
+DEFAULT_SOURCES = ["openalex", "arxiv", "pubmed", "crossref"]
 
 # OpenAlex asks that you identify yourself in the User-Agent so they can
 # route you to their faster "polite pool". Swap in your own email.
@@ -322,27 +322,49 @@ def _dedupe(papers: list[Paper]) -> list[Paper]:
     return out
 
 
+SORT_OPTIONS = ("relevance", "newest", "oldest", "cited")
+
+
+def _sort_papers(papers: list[Paper], sort: str) -> list[Paper]:
+    """Reorder results. Unknown-year / uncited papers sink to the bottom."""
+    if sort == "newest":
+        return sorted(papers, key=lambda p: (p.year is None, -(p.year or 0)))
+    if sort == "oldest":
+        return sorted(papers, key=lambda p: (p.year is None, p.year or 0))
+    if sort == "cited":
+        return sorted(
+            papers, key=lambda p: (p.citations is None, -(p.citations or 0))
+        )
+    return papers  # "relevance": keep the databases' own ordering
+
+
 def search(
     query: str,
     limit: int = 5,
     sources: list[str] | None = None,
     strict: bool = True,
+    sort: str = "relevance",
+    year_from: int | None = None,
 ) -> list[Paper]:
     """Search every requested source and merge the results.
 
-    ``sources`` defaults to ``DEFAULT_SOURCES`` (OpenAlex, arXiv, PubMed);
-    CrossRef is available by name. Failures in one source are swallowed so
-    a single API hiccup doesn't kill the run. Results are cached for a day
-    so reruns are instant and free.
+    ``sources`` defaults to ``DEFAULT_SOURCES`` (all four). Failures in one
+    source are swallowed so a single API hiccup doesn't kill the run.
+    Results are cached for a day so reruns are instant and free.
 
-    When ``strict`` is on (the default), papers whose title doesn't contain
-    every meaningful query word (or a synonym / word-form) are dropped, so
-    you only see genuinely on-topic results.
+    - ``strict`` (default on): drop papers whose title doesn't contain every
+      meaningful query word (or a synonym / word-form).
+    - ``sort``: one of relevance / newest / oldest / cited.
+    - ``year_from``: keep only papers published in or after this year.
     """
     from . import cache
 
     sources = sources or DEFAULT_SOURCES
-    cache_key = f"{query}|{limit}|{','.join(sorted(sources))}|strict={strict}"
+    sort = sort if sort in SORT_OPTIONS else "relevance"
+    cache_key = (
+        f"{query}|{limit}|{','.join(sorted(sources))}|strict={strict}"
+        f"|sort={sort}|from={year_from}"
+    )
     cached = cache.get("search", cache_key)
     if cached is not None:
         return [Paper(**row) for row in cached]
@@ -380,6 +402,11 @@ def search(
                 f"[filter] kept {len(merged)} of {before} results whose title "
                 f"matches '{query}' (use --loose to include the rest)"
             )
+
+    if year_from is not None:
+        merged = [p for p in merged if p.year is not None and p.year >= year_from]
+
+    merged = _sort_papers(merged, sort)
 
     # Only cache complete runs; a partial result from an outage shouldn't
     # stick around for a day.

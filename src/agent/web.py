@@ -15,6 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .citations import STYLES, format_reference, in_text
 from .config import DEFAULT_STYLE
+from .sources import SORT_OPTIONS
 
 WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
 
@@ -58,6 +59,7 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "styles": {k: v.split(". ")[0] for k, v in STYLES.items()},
                     "default_style": DEFAULT_STYLE,
+                    "sorts": list(SORT_OPTIONS),
                 }
             )
             return
@@ -83,22 +85,30 @@ class Handler(BaseHTTPRequestHandler):
         style = req.get("style") or DEFAULT_STYLE
         if style not in STYLES:
             style = DEFAULT_STYLE
+        sort = req.get("sort") if req.get("sort") in SORT_OPTIONS else "relevance"
         try:
-            limit = max(1, min(10, int(req.get("limit", 5))))
+            limit = max(1, min(25, int(req.get("limit", 8))))
         except (TypeError, ValueError):
-            limit = 5
+            limit = 8
+        try:
+            year_from = int(req["year_from"]) if req.get("year_from") else None
+        except (TypeError, ValueError):
+            year_from = None
 
         try:
             from .sources import search
 
-            papers = search(question, limit=limit)
+            papers = search(question, limit=limit, sort=sort, year_from=year_from)
             self._send_json(
                 {
                     "style": style,
+                    "sort": sort,
                     "sources": [
                         {
                             "title": p.title,
                             "year": p.year,
+                            "source": p.source,
+                            "citations": p.citations,
                             "url": p.url,
                             "reference": format_reference(p, style, number=i),
                             "in_text": in_text(p, style, number=i),
