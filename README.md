@@ -14,25 +14,40 @@ abstracts, and turning data into figures.
 - **Summarizes** each paper into main finding, method, and key numbers.
 - **Synthesizes** an answer to your question with inline citations, and never invents a source.
 - **Cites in your style** — Harvard, APA, MLA, Chicago, IEEE, or Vancouver. Full reference-list entries and in-text citations. Run `styles` to see what each one is for.
-- **Quotes specific passages** verbatim from a paper with a ready in-text citation, so you can drop a quote straight into an essay.
+- **Quotes specific passages** verbatim from a paper with a ready in-text citation. For open-access papers it reads the full PDF and gives a real page number, so you can drop a quote straight into an essay.
 - **Charts data** with matplotlib, either from numbers you provide or citation counts across a search.
 - **Writes a Markdown brief** with the synthesis, figures, quotes, and a full source list in your chosen style.
 - **Runs as an agent** (`ask`) where Claude drives the tools itself, or as a fixed pipeline (`research`) that does the same steps every time.
 
-## Setup
+## First time? Start here
+
+Three steps and you're running:
 
 ```bash
-# 1. Install dependencies
+# 1. Install everything
 pip install -r requirements.txt
 
-# 2. Add your Anthropic API key
-cp .env.example .env
-# then edit .env and paste your key
+# 2. Add your Anthropic API key (needed for the AI parts)
+cp .env.example .env          # then open .env and paste your key
+# Get a key at https://console.anthropic.com/
+
+# 3. Check it all worked
+python main.py doctor
 ```
 
-Get an API key at [console.anthropic.com](https://console.anthropic.com/).
+`doctor` tells you exactly what's set up and what isn't, in plain English.
 
-## Usage
+Then just run the app with no command for a guided, question-by-question mode.
+It asks what you're researching, which citation style your class uses, and
+whether you want quotes, then does the rest:
+
+```bash
+python main.py
+```
+
+Prefer typing commands directly? Those are below.
+
+## Commands
 
 ```bash
 # Full research brief in a chosen style, with quotable passages
@@ -48,10 +63,14 @@ python main.py search "CRISPR off-target effects" -n 8
 python main.py cite "CRISPR off-target effects" --style apa
 
 # Pull verbatim quotes with in-text citations, ready to paste
+# (reads the full PDF for real page numbers when the paper is open-access)
 python main.py quotes "CRISPR off-target effects" --style mla --focus "detection methods"
 
 # See what each referencing style is for
 python main.py styles
+
+# Check your setup
+python main.py doctor
 ```
 
 Briefs and figures land in `outputs/`.
@@ -78,13 +97,15 @@ perfectly clean, so eyeball citations before you hand work in.
 ```
 src/agent/
   sources.py     paper retrieval (OpenAlex, arXiv) -> normalized Paper objects
+  fulltext.py    download an open-access PDF, read it, locate a quote's page
   summarize.py   Claude: per-paper summaries + cross-paper synthesis
   citations.py   format references + in-text cites in 6 styles
-  passages.py    Claude: pull verbatim quotable passages with citations
+  passages.py    Claude: pull verbatim quotable passages with page citations
   charts.py      matplotlib chart generation
   report.py      assemble everything into a Markdown brief
   pipeline.py    the reliable straight-line flow
   agent.py       agentic tool-calling loop (Claude drives; search/cite/quote/chart tools)
+  wizard.py      guided beginner mode (runs when you pass no command)
   cli.py         command-line interface
 ```
 
@@ -96,7 +117,8 @@ Two ways to run the work:
 
 - [x] Multiple referencing styles (Harvard, APA, MLA, Chicago, IEEE, Vancouver)
 - [x] Quote specific passages with ready-to-paste citations
-- [ ] Full-text PDF parsing so quotes get real page/section locators (currently abstract-only)
+- [x] Full-text PDF parsing so quotes get real page numbers (open-access papers)
+- [x] Guided beginner mode + `doctor` setup check
 - [ ] Pull quantitative data straight out of papers for charting
 - [ ] PubMed and CrossRef sources
 - [ ] Result caching to cut repeat API cost

@@ -1,4 +1,9 @@
-"""Command-line interface for the STEM research agent."""
+"""Command-line interface for the STEM research agent.
+
+Run it with no command to get a guided, beginner-friendly mode. The named
+commands (research, ask, cite, quotes, search, styles, doctor) are there
+once you know what you want.
+"""
 
 from __future__ import annotations
 
@@ -6,19 +11,28 @@ import argparse
 import sys
 
 from .citations import STYLES
-from .config import DEFAULT_STYLE
+from .config import API_KEY_HELP, DEFAULT_STYLE, has_api_key
 
 STYLE_CHOICES = list(STYLES.keys())
 
 
-def main(argv: list[str] | None = None) -> int:
+def _needs_key() -> bool:
+    """Print setup help and signal to stop if there's no API key."""
+    if has_api_key():
+        return False
+    print(API_KEY_HELP)
+    return True
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="stem-research-agent",
-        description="Pull papers, summarize them, cite them, and chart data.",
+        description="Pull papers, summarize them, cite them, and chart data. "
+        "Run with no command for a guided mode.",
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    # command is optional: no command -> guided wizard.
+    sub = parser.add_subparsers(dest="command")
 
-    # research: straight-line pipeline -> Markdown brief
     p_research = sub.add_parser("research", help="Search + summarize + write a brief")
     p_research.add_argument("question", help="Your research question")
     p_research.add_argument("-n", "--limit", type=int, default=5, help="Papers per source")
@@ -35,38 +49,53 @@ def main(argv: list[str] | None = None) -> int:
         help="Also pull quotable passages with in-text citations",
     )
 
-    # ask: agentic loop, Claude drives the tools
     p_ask = sub.add_parser("ask", help="Let the agent decide how to answer")
     p_ask.add_argument("question", help="Your research question")
 
-    # search: quick source check, no LLM calls
-    p_search = sub.add_parser("search", help="Raw paper search, no summaries")
+    p_search = sub.add_parser("search", help="Raw paper search, no LLM calls")
     p_search.add_argument("query")
     p_search.add_argument("-n", "--limit", type=int, default=5)
 
-    # cite: format references for a search in a chosen style
-    p_cite = sub.add_parser("cite", help="Format references for a search in a style")
+    p_cite = sub.add_parser("cite", help="Format references for a search (no LLM calls)")
     p_cite.add_argument("query")
     p_cite.add_argument("-n", "--limit", type=int, default=5)
     p_cite.add_argument("--style", choices=STYLE_CHOICES, default=DEFAULT_STYLE)
 
-    # quotes: pull quotable passages with citations
     p_quotes = sub.add_parser("quotes", help="Pull quotable passages with citations")
     p_quotes.add_argument("query")
     p_quotes.add_argument("-n", "--limit", type=int, default=3)
     p_quotes.add_argument("--style", choices=STYLE_CHOICES, default=DEFAULT_STYLE)
     p_quotes.add_argument("--focus", default="", help="Narrow quotes to a topic")
+    p_quotes.add_argument(
+        "--no-fulltext", action="store_true",
+        help="Quote from abstracts only; don't download PDFs for page numbers",
+    )
 
-    # styles: explain each referencing style
     sub.add_parser("styles", help="List and explain the referencing styles")
+    sub.add_parser("doctor", help="Check your setup (deps, API key)")
+    return parser
 
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
     args = parser.parse_args(argv)
+
+    # No command: friendly guided mode.
+    if args.command is None:
+        from .wizard import run_wizard
+
+        return run_wizard()
+
+    if args.command == "doctor":
+        return _doctor()
 
     if args.command == "styles":
         from .citations import list_styles
 
         print("Supported referencing styles:\n")
         print(list_styles())
+        print(f"\nDefault: {DEFAULT_STYLE}. Change it with --style or the "
+              "CITATION_STYLE environment variable.")
         return 0
 
     if args.command == "search":
@@ -74,7 +103,8 @@ def main(argv: list[str] | None = None) -> int:
 
         for p in search(args.query, limit=args.limit):
             cites = f" · {p.citations} cites" if p.citations is not None else ""
-            print(f"- [{p.source}{cites}] {p.title} ({p.year})")
+            pdf = " · PDF" if p.pdf_url else ""
+            print(f"- [{p.source}{cites}{pdf}] {p.title} ({p.year})")
             print(f"  {p.url}")
         return 0
 
@@ -90,13 +120,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "quotes":
+        if _needs_key():
+            return 1
         from .passages import extract_passages
         from .sources import search
 
         papers = search(args.query, limit=args.limit)
         for i, p in enumerate(papers, start=1):
             quotes = extract_passages(
-                p, focus=args.focus, style=args.style, n=3, number=i
+                p, focus=args.focus, style=args.style, n=3, number=i,
+                use_fulltext=not args.no_fulltext,
             )
             if not quotes:
                 continue
@@ -109,6 +142,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "research":
+        if _needs_key():
+            return 1
         from .pipeline import run
 
         result = run(
@@ -122,6 +157,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "ask":
+        if _needs_key():
+            return 1
         from .agent import run
 
         answer = run(args.question)
@@ -129,6 +166,38 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     return 1
+
+
+def _doctor() -> int:
+    """Print a setup health check a beginner can act on."""
+    print("Checking your setup...\n")
+    ok = True
+
+    print(f"[ok] Python {sys.version.split()[0]}")
+
+    for mod, label in [
+        ("requests", "paper search"),
+        ("feedparser", "arXiv search"),
+        ("anthropic", "AI summaries/quotes"),
+        ("matplotlib", "charts"),
+        ("pypdf", "full-text PDF quotes"),
+    ]:
+        try:
+            __import__(mod)
+            print(f"[ok] {mod} installed ({label})")
+        except ImportError:
+            ok = False
+            print(f"[!!] {mod} missing ({label}) - run: pip install -r requirements.txt")
+
+    if has_api_key():
+        print("[ok] Anthropic API key found (AI features enabled)")
+    else:
+        ok = False
+        print("[!!] No Anthropic API key (AI features off)")
+        print("     " + API_KEY_HELP.replace("\n", "\n     "))
+
+    print("\nAll set!" if ok else "\nFix the [!!] items above, then run this again.")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

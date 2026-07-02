@@ -41,6 +41,7 @@ class Paper:
     volume: str = ""
     issue: str = ""
     pages: str = ""
+    pdf_url: str = ""  # open-access PDF, when one is available
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -90,6 +91,14 @@ def search_openalex(query: str, limit: int = 5) -> list[Paper]:
         pages = f"{first}-{last}" if first and last else (first or "")
         location = item.get("primary_location") or {}
         venue = (location.get("source") or {}).get("display_name", "")
+        # Prefer an open-access PDF if OpenAlex knows one.
+        best_oa = item.get("best_oa_location") or {}
+        pdf_url = (
+            best_oa.get("pdf_url")
+            or (item.get("open_access") or {}).get("oa_url")
+            or location.get("pdf_url")
+            or ""
+        )
 
         papers.append(
             Paper(
@@ -105,6 +114,7 @@ def search_openalex(query: str, limit: int = 5) -> list[Paper]:
                 volume=biblio.get("volume") or "",
                 issue=biblio.get("issue") or "",
                 pages=pages or "",
+                pdf_url=pdf_url,
             )
         )
     return papers
@@ -133,6 +143,8 @@ def search_arxiv(query: str, limit: int = 5) -> list[Paper]:
         # arXiv id like "2401.01234" pulled from the entry URL for the venue line.
         arxiv_id = entry.get("id", "").rsplit("/abs/", 1)[-1]
         venue = f"arXiv preprint arXiv:{arxiv_id}" if arxiv_id else "arXiv preprint"
+        # arXiv abstract links map directly to the PDF.
+        pdf_url = f"https://arxiv.org/pdf/{arxiv_id}" if arxiv_id else ""
         papers.append(
             Paper(
                 title=entry.get("title", "(untitled)").replace("\n", " ").strip(),
@@ -144,6 +156,7 @@ def search_arxiv(query: str, limit: int = 5) -> list[Paper]:
                 citations=None,  # arXiv doesn't report citation counts
                 source="arXiv",
                 venue=venue,
+                pdf_url=pdf_url,
             )
         )
     return papers

@@ -5,9 +5,9 @@ For each passage the student gets:
 - why it's useful / what it supports
 - an in-text citation in their chosen style, with a locator
 
-Right now quotes come from the abstract, so the locator is "abstract".
-When full-text parsing lands (roadmap), the same function can take the
-body text and give real page / section locators.
+If the paper's full text is available (open-access PDF), quotes come from
+the body and the locator is a real page number. Otherwise we fall back to
+the abstract and label the locator "abstract".
 """
 
 from __future__ import annotations
@@ -19,9 +19,13 @@ from anthropic import Anthropic
 
 from . import citations
 from .config import MODEL
+from .fulltext import FullText, fetch_fulltext
 from .sources import Paper
 
 client = Anthropic()
+
+# How much full text to send to the model per paper (rough token budget).
+MAX_FULLTEXT_CHARS = 18_000
 
 PASSAGE_SYSTEM = """You extract quotable passages from academic text for a \
 student's essay. You quote VERBATIM — every quote must appear word-for-word in \
@@ -36,21 +40,27 @@ def extract_passages(
     style: str = "harvard",
     n: int = 3,
     number: int | None = None,
-    body: str | None = None,
+    use_fulltext: bool = True,
 ) -> list[dict[str, Any]]:
     """Return up to ``n`` quotable passages with citations.
 
-    ``focus`` narrows quotes to a specific argument or claim. ``body`` is
-    optional full text; when absent we quote from the abstract and mark the
-    locator accordingly.
+    ``focus`` narrows quotes to a specific argument or claim. When
+    ``use_fulltext`` is on we try the open-access PDF for real page
+    locators, falling back to the abstract if there's no usable PDF.
     """
-    source_text = body or paper.abstract
+    full: FullText | None = fetch_fulltext(paper) if use_fulltext else None
+
+    if full:
+        source_text = full.capped_text(MAX_FULLTEXT_CHARS)
+        locus_label = "the full text"
+    else:
+        source_text = paper.abstract
+        locus_label = "the abstract"
+
     if not source_text:
         return []
 
-    locus_label = "the full text" if body else "the abstract"
     focus_line = f"Focus on passages about: {focus}\n" if focus else ""
-
     prompt = f"""From the text below, pull up to {n} short passages a student \
 could quote in an essay. {focus_line}
 Text (from {locus_label} of "{paper.title}"):
@@ -65,25 +75,29 @@ Return [] if nothing is worth quoting."""
 
     resp = client.messages.create(
         model=MODEL,
-        max_tokens=800,
+        max_tokens=900,
         system=PASSAGE_SYSTEM,
         messages=[{"role": "user", "content": prompt}],
     )
     raw = _safe_list(resp.content[0].text)
 
-    locator = "abstract" if not body else None
     out: list[dict[str, Any]] = []
     for item in raw:
         quote = (item.get("quote") or "").strip().strip('"')
         if not quote:
             continue
         # Guard against the model drifting from the source text.
-        if not body and not _appears_in(quote, source_text):
+        if not _appears_in(quote, source_text):
             continue
+        # Real page number from the PDF if we can find it; else abstract.
+        locator = (full.locate(quote) if full else None) or (
+            "abstract" if not full else "full text"
+        )
         out.append(
             {
                 "quote": quote,
                 "supports": item.get("supports", ""),
+                "locator": locator,
                 "in_text": citations.in_text(paper, style, locator=locator, number=number),
                 "reference": citations.format_reference(paper, style, number=number),
             }
