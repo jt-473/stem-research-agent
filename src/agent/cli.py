@@ -37,8 +37,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_research.add_argument("question", help="Your research question")
     p_research.add_argument("-n", "--limit", type=int, default=5, help="Papers per source")
     p_research.add_argument(
-        "--source", action="append", choices=["openalex", "arxiv"],
-        help="Restrict to a source (repeatable). Default: both.",
+        "--source", action="append",
+        choices=["openalex", "arxiv", "pubmed", "crossref"],
+        help="Restrict to a source (repeatable). Default: openalex, arxiv, "
+        "pubmed. CrossRef is opt-in (huge coverage, but often no abstracts).",
     )
     p_research.add_argument(
         "--style", choices=STYLE_CHOICES, default=DEFAULT_STYLE,
@@ -247,6 +249,21 @@ def _doctor() -> int:
         ok = False
         print("[!!] No Anthropic API key (AI features off)")
         print("     " + API_KEY_HELP.replace("\n", "\n     "))
+
+    # Quick reachability check of the paper databases (each is optional; a
+    # source being down is a warning, not a failure of your setup).
+    print()
+    from .sources import search
+
+    try:
+        hits = search("test", limit=1)
+        if hits:
+            print(f"[ok] Paper databases reachable ({hits[0].source} responded)")
+        else:
+            print("[..] Paper databases returned nothing for a test query "
+                  "(they may be briefly down; try again later)")
+    except Exception as exc:
+        print(f"[..] Couldn't reach the paper databases right now: {exc}")
 
     print("\nAll set!" if ok else "\nFix the [!!] items above, then run this again.")
     return 0 if ok else 1

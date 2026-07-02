@@ -29,6 +29,13 @@ def run(
     found = sources.search(question, limit=limit, sources=sources_list)
     if not found:
         raise SystemExit("No papers found. Try a broader query.")
+    # Several sources can each return `limit` papers; cap the total so LLM
+    # cost stays predictable, keeping abstract-rich papers first (they
+    # summarize and quote far better than title-only records).
+    found.sort(key=lambda p: not p.abstract)
+    cap = max(4, limit * 2)
+    if len(found) > cap:
+        found = found[:cap]
     print(f"      Found {len(found)} papers.")
 
     print("[2/5] Summarizing papers with Claude...")

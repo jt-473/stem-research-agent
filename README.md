@@ -10,7 +10,7 @@ abstracts, and turning data into figures.
 
 ## What it does
 
-- **Pulls papers** from OpenAlex (all fields) and arXiv (physics / CS / math). Both free, no key needed.
+- **Pulls papers** from four free databases, no key needed: OpenAlex (all fields), arXiv (physics / CS / math), PubMed (medicine / life sciences), and CrossRef (broad published work, with citation counts). Results are merged and de-duplicated.
 - **Summarizes** each paper into main finding, method, and key numbers.
 - **Synthesizes** an answer to your question with inline citations, and never invents a source.
 - **Cites in your style** — Harvard, APA, MLA, Chicago, IEEE, or Vancouver. Full reference-list entries and in-text citations. Run `styles` to see what each one is for.
@@ -62,6 +62,9 @@ python main.py ask "compare lithium-ion and solid-state battery energy density i
 # Just search, no LLM calls (free, fast sanity check)
 python main.py search "CRISPR off-target effects" -n 8
 
+# Restrict to specific databases (repeatable; default is openalex+arxiv+pubmed)
+python main.py research "gene therapy safety" --source pubmed --source crossref
+
 # Format references for a search in any style (no LLM calls)
 python main.py cite "CRISPR off-target effects" --style apa
 
@@ -103,7 +106,7 @@ perfectly clean, so eyeball citations before you hand work in.
 
 ```
 src/agent/
-  sources.py       paper retrieval (OpenAlex, arXiv) -> normalized Paper objects
+  sources.py       retrieval (OpenAlex, arXiv, PubMed, CrossRef) -> Paper objects
   cache.py         day-long cache of search results (.cache/)
   fulltext.py      download an open-access PDF, read it, locate a quote's page
   summarize.py     Claude: per-paper summaries + cross-paper synthesis
@@ -132,7 +135,7 @@ Two ways to run the work:
 - [x] Pull quantitative data straight out of papers for charting (`data` command)
 - [x] Result caching to cut repeat API cost
 - [x] Local web interface (`web` command)
-- [ ] PubMed and CrossRef sources
+- [x] PubMed and CrossRef sources
 
 ## Note on citations
 

@@ -17,6 +17,13 @@ import requests
 
 OPENALEX_URL = "https://api.openalex.org/works"
 ARXIV_URL = "http://export.arxiv.org/api/query"
+PUBMED_ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+PUBMED_EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+CROSSREF_URL = "https://api.crossref.org/works"
+
+# Which sources a plain search() hits. CrossRef is opt-in: its coverage is
+# huge but its records often lack abstracts, which the AI features rely on.
+DEFAULT_SOURCES = ["openalex", "arxiv", "pubmed"]
 
 # OpenAlex asks that you identify yourself in the User-Agent so they can
 # route you to their faster "polite pool". Swap in your own email.
@@ -162,6 +169,146 @@ def search_arxiv(query: str, limit: int = 5) -> list[Paper]:
     return papers
 
 
+def search_pubmed(query: str, limit: int = 5) -> list[Paper]:
+    """Search PubMed (medicine / life sciences) via NCBI E-utilities.
+
+    Two steps: esearch finds article ids, efetch pulls the records as XML.
+    Free, no key needed, but NCBI asks for max ~3 requests/second.
+    """
+    import xml.etree.ElementTree as ET
+
+    resp = requests.get(
+        PUBMED_ESEARCH_URL,
+        params={
+            "db": "pubmed",
+            "term": query,
+            "retmax": limit,
+            "sort": "relevance",
+            "retmode": "json",
+        },
+        headers=HEADERS,
+        timeout=30,
+    )
+    resp.raise_for_status()
+    ids = resp.json().get("esearchresult", {}).get("idlist", [])
+    if not ids:
+        return []
+
+    time.sleep(0.34)  # NCBI rate courtesy between the two calls
+    resp = requests.get(
+        PUBMED_EFETCH_URL,
+        params={"db": "pubmed", "id": ",".join(ids), "retmode": "xml"},
+        headers=HEADERS,
+        timeout=30,
+    )
+    resp.raise_for_status()
+    root = ET.fromstring(resp.text)
+
+    papers: list[Paper] = []
+    for art in root.iterfind(".//PubmedArticle"):
+        pmid = art.findtext(".//PMID", "")
+        # itertext() so inline markup inside titles (<i>, <sup>) doesn't
+        # truncate the text.
+        title_node = art.find(".//ArticleTitle")
+        title = "".join(title_node.itertext()) if title_node is not None else ""
+        title = title or "(untitled)"
+        # Abstracts can be split into labelled sections; join them all.
+        abstract = " ".join(
+            " ".join(node.itertext()).strip()
+            for node in art.iterfind(".//Abstract/AbstractText")
+        ).strip()
+        authors = []
+        for a in art.iterfind(".//AuthorList/Author"):
+            fore, last = a.findtext("ForeName", ""), a.findtext("LastName", "")
+            name = f"{fore} {last}".strip()
+            if name:
+                authors.append(name)
+        year_text = art.findtext(".//JournalIssue/PubDate/Year") or (
+            (art.findtext(".//JournalIssue/PubDate/MedlineDate") or "")[:4]
+        )
+        year = int(year_text) if year_text.isdigit() else None
+        doi = ""
+        for eid in art.iterfind(".//ELocationID"):
+            if eid.get("EIdType") == "doi" and eid.text:
+                doi = eid.text.strip()
+        papers.append(
+            Paper(
+                title=title.strip(),
+                abstract=abstract,
+                authors=authors,
+                year=year,
+                url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else "",
+                doi=doi,
+                citations=None,  # PubMed doesn't report citation counts
+                source="PubMed",
+                venue=art.findtext(".//Journal/Title", "") or "",
+                volume=art.findtext(".//JournalIssue/Volume", "") or "",
+                issue=art.findtext(".//JournalIssue/Issue", "") or "",
+                pages=art.findtext(".//Pagination/MedlinePgn", "") or "",
+            )
+        )
+    return papers
+
+
+def _strip_jats(text: str) -> str:
+    """CrossRef abstracts arrive as JATS XML; strip the tags."""
+    import re
+
+    return " ".join(re.sub(r"<[^>]+>", " ", text).split())
+
+
+def search_crossref(query: str, limit: int = 5) -> list[Paper]:
+    """Search CrossRef: broad coverage of published work, with citation counts.
+
+    Records often lack abstracts (publishers don't always deposit them),
+    which is why this source is opt-in rather than a default.
+    """
+    resp = requests.get(
+        CROSSREF_URL,
+        params={"query": query, "rows": limit},
+        headers=HEADERS,
+        timeout=30,
+    )
+    resp.raise_for_status()
+    items = resp.json().get("message", {}).get("items", [])
+
+    papers: list[Paper] = []
+    for item in items:
+        titles = item.get("title") or []
+        authors = [
+            f"{a.get('given', '')} {a.get('family', '')}".strip()
+            for a in item.get("author", [])
+            if a.get("family") or a.get("given")
+        ]
+        date_parts = (item.get("issued") or {}).get("date-parts") or [[None]]
+        year = date_parts[0][0] if date_parts[0] else None
+        containers = item.get("container-title") or []
+        # Grab a PDF link when the publisher exposes one.
+        pdf_url = ""
+        for link in item.get("link", []):
+            if link.get("content-type") == "application/pdf" and link.get("URL"):
+                pdf_url = link["URL"]
+                break
+        papers.append(
+            Paper(
+                title=(titles[0] if titles else "(untitled)").strip(),
+                abstract=_strip_jats(item.get("abstract", "")),
+                authors=authors,
+                year=year if isinstance(year, int) else None,
+                url=item.get("URL", ""),
+                doi=item.get("DOI", ""),
+                citations=item.get("is-referenced-by-count"),
+                source="CrossRef",
+                venue=containers[0] if containers else "",
+                volume=item.get("volume", "") or "",
+                issue=item.get("issue", "") or "",
+                pages=item.get("page", "") or "",
+                pdf_url=pdf_url,
+            )
+        )
+    return papers
+
+
 def _dedupe(papers: list[Paper]) -> list[Paper]:
     """Drop duplicate papers across sources (same DOI, or same title)."""
     seen: set[str] = set()
@@ -178,19 +325,25 @@ def _dedupe(papers: list[Paper]) -> list[Paper]:
 def search(query: str, limit: int = 5, sources: list[str] | None = None) -> list[Paper]:
     """Search every requested source and merge the results.
 
-    ``sources`` defaults to both OpenAlex and arXiv. Failures in one
-    source are swallowed so a single API hiccup doesn't kill the run.
-    Results are cached for a day so reruns are instant and free.
+    ``sources`` defaults to ``DEFAULT_SOURCES`` (OpenAlex, arXiv, PubMed);
+    CrossRef is available by name. Failures in one source are swallowed so
+    a single API hiccup doesn't kill the run. Results are cached for a day
+    so reruns are instant and free.
     """
     from . import cache
 
-    sources = sources or ["openalex", "arxiv"]
+    sources = sources or DEFAULT_SOURCES
     cache_key = f"{query}|{limit}|{','.join(sorted(sources))}"
     cached = cache.get("search", cache_key)
     if cached is not None:
         return [Paper(**row) for row in cached]
 
-    runners = {"openalex": search_openalex, "arxiv": search_arxiv}
+    runners = {
+        "openalex": search_openalex,
+        "arxiv": search_arxiv,
+        "pubmed": search_pubmed,
+        "crossref": search_crossref,
+    }
 
     merged: list[Paper] = []
     failures = 0
