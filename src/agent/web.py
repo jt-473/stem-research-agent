@@ -1,11 +1,8 @@
 """A small local web interface, no extra installs needed.
 
-Run ``python main.py web`` and a browser page opens with a search box,
-style picker, and results. Everything runs on Python's standard library
-so a beginner doesn't need Node or any other toolchain.
-
-The server binds to 127.0.0.1 only: it's a local tool, not something to
-expose to a network.
+Run ``python main.py web`` and a browser page opens with a search box and a
+style picker. Everything runs on Python's standard library, and it binds to
+127.0.0.1 only: it's a local tool, not something to expose to a network.
 """
 
 from __future__ import annotations
@@ -17,13 +14,12 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .citations import STYLES, format_reference, in_text
-from .config import DEFAULT_STYLE, OUTPUT_DIR, has_api_key
+from .config import DEFAULT_STYLE
 
 WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
 
 
 class Handler(BaseHTTPRequestHandler):
-    # Quieter logs: one line per request, no noise.
     def log_message(self, fmt: str, *args) -> None:
         print(f"  [web] {self.command} {self.path}")
 
@@ -62,28 +58,14 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "styles": {k: v.split(". ")[0] for k, v in STYLES.items()},
                     "default_style": DEFAULT_STYLE,
-                    "has_api_key": has_api_key(),
                 }
             )
-            return
-
-        if self.path.startswith("/outputs/"):
-            # Serve generated figures/reports. Resolve carefully so a crafted
-            # path can't escape the outputs directory.
-            name = self.path[len("/outputs/"):]
-            base = os.path.abspath(OUTPUT_DIR)
-            target = os.path.abspath(os.path.join(base, name))
-            if not target.startswith(base + os.sep):
-                self.send_error(403)
-                return
-            ctype = "image/png" if target.endswith(".png") else "text/plain; charset=utf-8"
-            self._send_file(target, ctype)
             return
 
         self.send_error(404)
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path != "/api/research":
+        if self.path != "/api/search":
             self.send_error(404)
             return
 
@@ -101,74 +83,35 @@ class Handler(BaseHTTPRequestHandler):
         style = req.get("style") or DEFAULT_STYLE
         if style not in STYLES:
             style = DEFAULT_STYLE
-        want_quotes = bool(req.get("quotes"))
         try:
             limit = max(1, min(10, int(req.get("limit", 5))))
         except (TypeError, ValueError):
             limit = 5
 
         try:
-            if has_api_key():
-                self._send_json(self._full_research(question, style, want_quotes, limit))
-            else:
-                self._send_json(self._search_only(question, style, limit))
+            from .sources import search
+
+            papers = search(question, limit=limit)
+            self._send_json(
+                {
+                    "style": style,
+                    "sources": [
+                        {
+                            "title": p.title,
+                            "year": p.year,
+                            "url": p.url,
+                            "reference": format_reference(p, style, number=i),
+                            "in_text": in_text(p, style, number=i),
+                        }
+                        for i, p in enumerate(papers, start=1)
+                    ],
+                }
+            )
         except Exception as exc:
             self._send_json(
                 {"error": f"Something went wrong: {exc}. Try a broader topic."},
                 status=500,
             )
-
-    # --- the two research paths -------------------------------------------
-
-    def _full_research(self, question: str, style: str, want_quotes: bool, limit: int) -> dict:
-        from .pipeline import run
-
-        result = run(question, limit=limit, style=style, quotes=want_quotes)
-        papers = result["papers"]
-        return {
-            "mode": "full",
-            "style": style,
-            "synthesis": result["synthesis"],
-            "report": result["report"],
-            "figures": ["/outputs/" + os.path.basename(f) for f in result["figures"]],
-            "sources": [
-                {
-                    "title": p.title,
-                    "year": p.year,
-                    "url": p.url,
-                    "reference": format_reference(p, style, number=i),
-                    "in_text": in_text(p, style, number=i),
-                    "main_finding": s.get("main_finding", ""),
-                }
-                for i, (p, s) in enumerate(zip(papers, result["summaries"]), start=1)
-            ],
-            "quotes": [
-                {"paper": p.title, "items": q}
-                for p, q in zip(papers, result["passages"] or [])
-                if q
-            ],
-        }
-
-    def _search_only(self, question: str, style: str, limit: int) -> dict:
-        from .sources import search
-
-        papers = search(question, limit=limit)
-        return {
-            "mode": "search_only",
-            "style": style,
-            "notice": "No API key set, so this is search and citations only. "
-            "Add a key in .env for AI summaries and quotes.",
-            "sources": [
-                {
-                    "title": p.title,
-                    "year": p.year,
-                    "url": p.url,
-                    "reference": format_reference(p, style, number=i),
-                    "in_text": in_text(p, style, number=i),
-                }
-                for i, p in enumerate(papers, start=1)
-            ],
-        }
 
 
 def serve(port: int = 8765, open_browser: bool = True) -> int:

@@ -30,17 +30,15 @@
   }
   .row { display: flex; gap: 16px; flex-wrap: wrap; }
   .row > div { flex: 1; min-width: 180px; }
-  .check { display: flex; align-items: center; gap: 8px; margin-top: 26px; }
   button {
     margin-top: 20px; padding: 11px 22px; font-size: 1rem; border: 0;
     border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer;
   }
   button:disabled { opacity: .5; cursor: wait; }
   .notice {
-    background: #3a2f18; border: 1px solid #6b5b2e; color: #ffdf9e;
+    background: #3a1a22; border: 1px solid #6b2e3c; color: #ff9eb0;
     padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: .9rem;
   }
-  .error { background: #3a1a22; border-color: #6b2e3c; color: #ff9eb0; }
   .src { border-top: 1px solid var(--border); padding: 14px 0; }
   .src:first-child { border-top: 0; }
   .src h3 { margin: 0 0 6px; font-size: 1rem; }
@@ -49,28 +47,18 @@
     display: inline-block; background: var(--bg); border: 1px solid var(--border);
     border-radius: 6px; padding: 1px 8px; font-size: .85rem; margin-top: 6px;
   }
-  blockquote {
-    margin: 10px 0; padding: 10px 14px; border-left: 3px solid var(--accent);
-    background: var(--bg); border-radius: 0 8px 8px 0; font-size: .95rem;
-  }
-  .quote-meta { color: var(--muted); font-size: .85rem; }
-  img.figure { max-width: 100%; border-radius: 8px; margin-top: 10px; }
   a { color: var(--accent); }
-  .hidden { display: none; }
   .spinner { color: var(--muted); }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>STEM Research Agent</h1>
-  <p class="sub">Find real papers, cite them in your style, and pull quotes for your report.</p>
-
-  <div id="keyNotice" class="notice hidden"></div>
+  <p class="sub">Find real papers and cite them in your style. Free, nothing leaves your computer.</p>
 
   <div class="card">
     <label for="q">What do you want to research?</label>
-    <input type="text" id="q" placeholder="e.g. does caffeine improve reaction time"
-           autofocus>
+    <input type="text" id="q" placeholder="e.g. caffeine reaction time" autofocus>
     <div class="row">
       <div>
         <label for="style">Citation style</label>
@@ -82,12 +70,8 @@
           <option>3</option><option selected>5</option><option>8</option><option>10</option>
         </select>
       </div>
-      <div class="check">
-        <input type="checkbox" id="quotes" checked>
-        <label for="quotes" style="margin:0">Pull quotable passages</label>
-      </div>
     </div>
-    <button id="go">Research</button>
+    <button id="go">Find papers</button>
     <span id="status" class="spinner"></span>
   </div>
 
@@ -96,7 +80,6 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-let hasKey = false;
 
 async function loadMeta() {
   try {
@@ -108,16 +91,6 @@ async function loadMeta() {
       opt.textContent = desc;
       if (key === meta.default_style) opt.selected = true;
       sel.appendChild(opt);
-    }
-    hasKey = meta.has_api_key;
-    if (!hasKey) {
-      const n = $("keyNotice");
-      n.classList.remove("hidden");
-      n.textContent = "No API key set yet, so you'll get paper search and " +
-        "citations only. Add your Anthropic key to the .env file to unlock " +
-        "AI summaries and quotes, then restart this page.";
-      $("quotes").checked = false;
-      $("quotes").disabled = true;
     }
   } catch { /* meta is a nicety; the form still works */ }
 }
@@ -134,50 +107,16 @@ function render(data) {
   box.replaceChildren();
 
   if (data.error) {
-    const n = el("div", "notice error", data.error);
-    box.appendChild(n);
+    box.appendChild(el("div", "notice", data.error));
     return;
-  }
-  if (data.notice) box.appendChild(el("div", "notice", data.notice));
-
-  if (data.synthesis) {
-    const card = el("div", "card");
-    card.appendChild(el("h2", null, "Answer"));
-    card.appendChild(el("p", null, data.synthesis));
-    (data.figures || []).forEach((src) => {
-      const img = el("img", "figure");
-      img.src = src;
-      card.appendChild(img);
-    });
-    if (data.report) {
-      const p = el("p", "quote-meta", "Full report saved to: " + data.report);
-      card.appendChild(p);
-    }
-    box.appendChild(card);
-  }
-
-  if (data.quotes && data.quotes.length) {
-    const card = el("div", "card");
-    card.appendChild(el("h2", null, "Quotes you can paste"));
-    data.quotes.forEach((group) => {
-      card.appendChild(el("h3", null, group.paper));
-      group.items.forEach((q) => {
-        const bq = el("blockquote");
-        bq.appendChild(el("div", null, '"' + q.quote + '" ' + q.in_text));
-        if (q.supports) bq.appendChild(el("div", "quote-meta", "supports: " + q.supports));
-        card.appendChild(bq);
-      });
-    });
-    box.appendChild(card);
   }
 
   if (data.sources && data.sources.length) {
     const card = el("div", "card");
-    card.appendChild(el("h2", null, "Sources and citations"));
+    card.appendChild(el("h2", null, "Papers and citations"));
     data.sources.forEach((s) => {
       const div = el("div", "src");
       div.appendChild(el("h3", null, s.title + (s.year ? " (" + s.year + ")" : "")));
-      if (s.main_finding) div.appendChild(el("div", null, s.main_finding));
       div.appendChild(el("div", "ref", s.reference));
       div.appendChild(el("span", "intext", "in-text: " + s.in_text));
       if (s.url) {
@@ -188,8 +127,8 @@ function render(data) {
       card.appendChild(div);
     });
     box.appendChild(card);
-  } else if (!data.synthesis) {
-    box.appendChild(el("div", "notice", "No papers found. Try a broader topic."));
+  } else {
+    box.appendChild(el("div", "notice", "No papers matched. Try broader keywords."));
   }
 }
 
@@ -197,17 +136,14 @@ async function go() {
   const question = $("q").value.trim();
   if (!question) { $("q").focus(); return; }
   $("go").disabled = true;
-  $("status").textContent = hasKey
-    ? "Working on it. This can take a minute or two..."
-    : "Searching...";
+  $("status").textContent = "Searching...";
   try {
-    const resp = await fetch("/api/research", {
+    const resp = await fetch("/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         question,
         style: $("style").value,
-        quotes: $("quotes").checked,
         limit: parseInt($("limit").value, 10),
       }),
     });

@@ -1,8 +1,8 @@
-"""stem-research-agent: pull papers, cite them, summarize them, and chart data.
+"""stem-research-agent: find papers across databases and cite them.
 
-Submodules are imported lazily (not eagerly here) so lightweight parts
-like ``sources`` and ``citations`` don't drag in the Anthropic SDK or
-matplotlib unless you actually use them.
+Free and key-free: paper search, relevance filtering, and citation
+formatting in six referencing styles. Submodules are imported lazily by
+the CLI so nothing heavy loads unless you use it.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
