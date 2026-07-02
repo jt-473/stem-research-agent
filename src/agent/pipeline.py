@@ -40,7 +40,7 @@ def run(
         found = found[:cap]
     print(f"      Found {len(found)} papers.")
 
-    print("[2/5] Summarizing papers with Claude...")
+    print("[2/5] Summarizing papers with the AI...")
     summaries = [summarize.summarize_paper(p) for p in found]
 
     print("[3/5] Synthesizing an answer...")
