@@ -15,8 +15,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from . import citations
-from .config import MODEL, get_client
+from . import citations, llm
 from .fulltext import FullText, fetch_fulltext
 from .sources import Paper
 
@@ -69,13 +68,7 @@ Return ONLY valid JSON: a list of objects with keys:
 - "supports": one short phrase on what claim this quote backs up
 Return [] if nothing is worth quoting."""
 
-    resp = get_client().messages.create(
-        model=MODEL,
-        max_tokens=900,
-        system=PASSAGE_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw = _safe_list(resp.content[0].text)
+    raw = _safe_list(llm.complete(prompt, system=PASSAGE_SYSTEM, max_tokens=900))
 
     out: list[dict[str, Any]] = []
     for item in raw:

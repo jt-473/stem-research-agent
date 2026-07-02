@@ -2,8 +2,8 @@
 
 An AI agent that helps with lab reports and essays. Give it a research
 question and it pulls real papers from scholarly databases, summarizes
-them with Claude, writes a cited synthesis, and generates charts you can
-drop into your work.
+them, writes a cited synthesis, and generates charts you can drop into
+your work. Runs on either Google Gemini (free tier) or Claude.
 
 Built to speed up the annoying part of research: finding sources, reading
 abstracts, and turning data into figures.
@@ -18,7 +18,8 @@ abstracts, and turning data into figures.
 - **Quotes specific passages** verbatim from a paper with a ready in-text citation. For open-access papers it reads the full PDF and gives a real page number, so you can drop a quote straight into an essay.
 - **Charts data** with matplotlib, either from numbers you provide or citation counts across a search.
 - **Writes a Markdown brief** with the synthesis, figures, quotes, and a full source list in your chosen style.
-- **Runs as an agent** (`ask`) where Claude drives the tools itself, or as a fixed pipeline (`research`) that does the same steps every time.
+- **Free or paid AI** — runs on Google Gemini (free tier) or Claude, set by one line in `.env`.
+- **Runs as an agent** (`ask`) where the model drives the tools itself, or as a fixed pipeline (`research`) that does the same steps every time.
 
 ## First time? Start here
 
@@ -28,15 +29,32 @@ Three steps and you're running:
 # 1. Install everything
 pip install -r requirements.txt
 
-# 2. Add your Anthropic API key (needed for the AI parts)
-cp .env.example .env          # then open .env and paste your key
-# Get a key at https://console.anthropic.com/
+# 2. Add an API key (needed for the AI parts). Two options:
+cp .env.example .env          # then open .env and paste a key
+
+#    Free:  set PROVIDER=gemini and paste a Google Gemini key
+#           (get one free at https://aistudio.google.com/apikey)
+#    Paid:  set PROVIDER=anthropic and paste a Claude key
+#           (https://console.anthropic.com/)
 
 # 3. Check it all worked
 python main.py doctor
 ```
 
-`doctor` tells you exactly what's set up and what isn't, in plain English.
+`doctor` tells you exactly what's set up and what isn't, in plain English,
+including which provider and model you're on.
+
+### Free or paid? (choosing a provider)
+
+The AI features (summaries, quotes, data extraction) run through one provider,
+set by `PROVIDER` in `.env`:
+
+- **`gemini`** — Google Gemini, has a genuinely free tier. Great for students.
+- **`anthropic`** — Claude, paid but a few cents per run. Also unlocks the
+  `ask` agent mode.
+
+Switch anytime by changing that one line. Everything else works the same. The
+`search`, `cite`, and `styles` commands need no key or provider at all.
 
 Then pick whichever way of using it you like:
 
@@ -57,7 +75,7 @@ Prefer typing commands directly? Those are below.
 # Full research brief in a chosen style, with quotable passages
 python main.py research "does caffeine improve reaction time" --style harvard --quotes
 
-# Let the agent decide its own steps (tool-calling loop)
+# Let the agent decide its own steps (tool-calling loop; needs PROVIDER=anthropic)
 python main.py ask "compare lithium-ion and solid-state battery energy density in IEEE style"
 
 # Just search, no LLM calls (free, fast sanity check)
@@ -109,6 +127,7 @@ perfectly clean, so eyeball citations before you hand work in.
 src/agent/
   sources.py       retrieval (OpenAlex, arXiv, PubMed, CrossRef) -> Paper objects
   relevance.py     keep only papers whose title matches the query (+ synonyms)
+  llm.py           one text-generation interface over Claude and Gemini
   cache.py         day-long cache of search results (.cache/)
   fulltext.py      download an open-access PDF, read it, locate a quote's page
   summarize.py     Claude: per-paper summaries + cross-paper synthesis

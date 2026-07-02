@@ -16,8 +16,7 @@ import json
 from collections import defaultdict
 from typing import Any
 
-from . import charts
-from .config import MODEL, get_client
+from . import charts, llm
 from .fulltext import fetch_fulltext
 from .sources import Paper
 
@@ -57,13 +56,7 @@ Return ONLY valid JSON: a list of objects with keys:
 Skip citation counts, sample sizes are fine to include. Return [] if there
 are no clear quantitative results."""
 
-    resp = get_client().messages.create(
-        model=MODEL,
-        max_tokens=1200,
-        system=EXTRACT_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw = _safe_list(resp.content[0].text)
+    raw = _safe_list(llm.complete(prompt, system=EXTRACT_SYSTEM, max_tokens=1200))
 
     out = []
     for item in raw:

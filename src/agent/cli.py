@@ -241,24 +241,30 @@ def main(argv: list[str] | None = None) -> int:
 
 def _doctor() -> int:
     """Print a setup health check a beginner can act on."""
+    from .config import MODEL, PROVIDER
+
     print("Checking your setup...\n")
     ok = True
 
     print(f"[ok] Python {sys.version.split()[0]}")
+    print(f"[ok] Provider: {PROVIDER} (model: {MODEL})")
 
-    for mod, label in [
-        ("requests", "paper search"),
-        ("feedparser", "arXiv search"),
-        ("anthropic", "AI summaries/quotes"),
-        ("matplotlib", "charts"),
-        ("pypdf", "full-text PDF quotes"),
+    # The SDK you need depends on which provider is selected.
+    ai_pkg = "google-genai" if PROVIDER == "gemini" else "anthropic"
+    ai_import = "google.genai" if PROVIDER == "gemini" else "anthropic"
+    for mod, label, pkg in [
+        ("requests", "paper search", "requests"),
+        ("feedparser", "arXiv search", "feedparser"),
+        (ai_import, "AI summaries/quotes", ai_pkg),
+        ("matplotlib", "charts", "matplotlib"),
+        ("pypdf", "full-text PDF quotes", "pypdf"),
     ]:
         try:
             __import__(mod)
-            print(f"[ok] {mod} installed ({label})")
+            print(f"[ok] {pkg} installed ({label})")
         except ImportError:
             ok = False
-            print(f"[!!] {mod} missing ({label}) - run: pip install -r requirements.txt")
+            print(f"[!!] {pkg} missing ({label}) - run: pip install -r requirements.txt")
 
     # Optional: nltk/WordNet widens synonym matching in the relevance filter.
     # Word-forms and common synonyms work without it.
@@ -269,11 +275,12 @@ def _doctor() -> int:
         print("[--] nltk not installed (optional) - basic synonyms still work; "
               "'pip install nltk' widens them")
 
+    key_name = "Gemini" if PROVIDER == "gemini" else "Anthropic"
     if has_api_key():
-        print("[ok] Anthropic API key found (AI features enabled)")
+        print(f"[ok] {key_name} API key found (AI features enabled)")
     else:
         ok = False
-        print("[!!] No Anthropic API key (AI features off)")
+        print(f"[!!] No {key_name} API key (AI features off)")
         print("     " + API_KEY_HELP.replace("\n", "\n     "))
 
     # Quick reachability check of the paper databases (each is optional; a

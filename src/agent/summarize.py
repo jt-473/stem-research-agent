@@ -1,11 +1,11 @@
-"""Turn raw paper abstracts into structured, usable summaries with Claude."""
+"""Turn raw paper abstracts into structured, usable summaries with the LLM."""
 
 from __future__ import annotations
 
 import json
 from typing import Any
 
-from .config import MODEL, get_client
+from . import llm
 from .sources import Paper
 
 SUMMARY_SYSTEM = """You are a STEM research assistant helping a student write \
@@ -36,13 +36,7 @@ Return ONLY valid JSON with these keys:
 (empty list if none are stated)
 - "relevance": one sentence on when a student would cite this"""
 
-    resp = get_client().messages.create(
-        model=MODEL,
-        max_tokens=600,
-        system=SUMMARY_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    text = resp.content[0].text.strip()
+    text = llm.complete(prompt, system=SUMMARY_SYSTEM, max_tokens=600)
     return _safe_json(text)
 
 
@@ -67,13 +61,7 @@ Write a 4-6 sentence synthesis that answers the research question using \
 only these sources. Cite claims inline with their number like [1], [2]. \
 Do not introduce facts that aren't in the sources above."""
 
-    resp = get_client().messages.create(
-        model=MODEL,
-        max_tokens=800,
-        system=SUMMARY_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return resp.content[0].text.strip()
+    return llm.complete(prompt, system=SUMMARY_SYSTEM, max_tokens=800)
 
 
 def _safe_json(text: str) -> dict[str, Any]:

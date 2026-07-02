@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import json
 
-from . import charts, citations, passages, sources
-from .config import DEFAULT_STYLE, MODEL, get_client
+from . import charts, citations, config, llm, passages, sources
+from .config import DEFAULT_STYLE, MODEL
 
 TOOLS = [
     {
@@ -202,12 +202,25 @@ class _Session:
 
 
 def run(question: str, max_turns: int = 10) -> str:
-    """Let Claude research the question with tools. Returns final answer text."""
+    """Let Claude research the question with tools. Returns final answer text.
+
+    The agentic loop uses Claude's tool-calling API. On other providers,
+    point people at the pipeline commands (research/quotes/data), which are
+    provider-agnostic and cover the same ground.
+    """
+    if config.PROVIDER != "anthropic":
+        raise SystemExit(
+            f"The 'ask' agent mode currently needs Claude (PROVIDER=anthropic), "
+            f"but PROVIDER is set to {config.PROVIDER!r}.\n"
+            "Use 'research', 'quotes', or 'data' instead — those work on "
+            "Gemini and cover the same features."
+        )
+
     session = _Session()
     messages = [{"role": "user", "content": question}]
 
     for _ in range(max_turns):
-        resp = get_client().messages.create(
+        resp = llm.anthropic_client().messages.create(
             model=MODEL,
             max_tokens=2000,
             system=SYSTEM,
