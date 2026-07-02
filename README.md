@@ -11,6 +11,7 @@ abstracts, and turning data into figures.
 ## What it does
 
 - **Pulls papers** from four free databases, no key needed: OpenAlex (all fields), arXiv (physics / CS / math), PubMed (medicine / life sciences), and CrossRef (broad published work, with citation counts). Results are merged and de-duplicated.
+- **Filters for real relevance**: a paper is kept only if your search words actually appear in its title, counting word-forms (kick / kicks / kicking) and synonyms (football / soccer). No more loosely-related results. Add `--loose` to turn it off.
 - **Summarizes** each paper into main finding, method, and key numbers.
 - **Synthesizes** an answer to your question with inline citations, and never invents a source.
 - **Cites in your style** — Harvard, APA, MLA, Chicago, IEEE, or Vancouver. Full reference-list entries and in-text citations. Run `styles` to see what each one is for.
@@ -107,6 +108,7 @@ perfectly clean, so eyeball citations before you hand work in.
 ```
 src/agent/
   sources.py       retrieval (OpenAlex, arXiv, PubMed, CrossRef) -> Paper objects
+  relevance.py     keep only papers whose title matches the query (+ synonyms)
   cache.py         day-long cache of search results (.cache/)
   fulltext.py      download an open-access PDF, read it, locate a quote's page
   summarize.py     Claude: per-paper summaries + cross-paper synthesis

@@ -322,18 +322,27 @@ def _dedupe(papers: list[Paper]) -> list[Paper]:
     return out
 
 
-def search(query: str, limit: int = 5, sources: list[str] | None = None) -> list[Paper]:
+def search(
+    query: str,
+    limit: int = 5,
+    sources: list[str] | None = None,
+    strict: bool = True,
+) -> list[Paper]:
     """Search every requested source and merge the results.
 
     ``sources`` defaults to ``DEFAULT_SOURCES`` (OpenAlex, arXiv, PubMed);
     CrossRef is available by name. Failures in one source are swallowed so
     a single API hiccup doesn't kill the run. Results are cached for a day
     so reruns are instant and free.
+
+    When ``strict`` is on (the default), papers whose title doesn't contain
+    every meaningful query word (or a synonym / word-form) are dropped, so
+    you only see genuinely on-topic results.
     """
     from . import cache
 
     sources = sources or DEFAULT_SOURCES
-    cache_key = f"{query}|{limit}|{','.join(sorted(sources))}"
+    cache_key = f"{query}|{limit}|{','.join(sorted(sources))}|strict={strict}"
     cached = cache.get("search", cache_key)
     if cached is not None:
         return [Paper(**row) for row in cached]
@@ -359,6 +368,19 @@ def search(query: str, limit: int = 5, sources: list[str] | None = None) -> list
         time.sleep(0.34)  # be gentle with the free APIs
 
     merged = _dedupe(merged)
+
+    if strict:
+        from . import relevance
+
+        before = len(merged)
+        merged = relevance.filter_by_title(merged, query)
+        dropped = before - len(merged)
+        if dropped:
+            print(
+                f"[filter] kept {len(merged)} of {before} results whose title "
+                f"matches '{query}' (use --loose to include the rest)"
+            )
+
     # Only cache complete runs; a partial result from an outage shouldn't
     # stick around for a day.
     if merged and failures == 0:

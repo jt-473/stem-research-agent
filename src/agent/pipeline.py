@@ -19,14 +19,16 @@ def run(
     sources_list: list[str] | None = None,
     style: str = DEFAULT_STYLE,
     quotes: bool = False,
+    strict: bool = True,
 ) -> dict:
     """Run the full pipeline and return paths + data.
 
     ``style`` sets the referencing style for the brief. ``quotes`` pulls
-    quotable passages (with in-text citations) from each paper.
+    quotable passages (with in-text citations) from each paper. ``strict``
+    keeps only papers whose title matches the query.
     """
     print(f"[1/5] Searching for: {question!r}")
-    found = sources.search(question, limit=limit, sources=sources_list)
+    found = sources.search(question, limit=limit, sources=sources_list, strict=strict)
     if not found:
         raise SystemExit("No papers found. Try a broader query.")
     # Several sources can each return `limit` papers; cap the total so LLM

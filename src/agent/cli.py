@@ -50,6 +50,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--quotes", action="store_true",
         help="Also pull quotable passages with in-text citations",
     )
+    p_research.add_argument(
+        "--loose", action="store_true",
+        help="Don't require the query words to appear in each paper's title",
+    )
 
     p_ask = sub.add_parser("ask", help="Let the agent decide how to answer")
     p_ask.add_argument("question", help="Your research question")
@@ -57,11 +61,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_search = sub.add_parser("search", help="Raw paper search, no LLM calls")
     p_search.add_argument("query")
     p_search.add_argument("-n", "--limit", type=int, default=5)
+    p_search.add_argument(
+        "--loose", action="store_true",
+        help="Don't require the query words to appear in each paper's title",
+    )
 
     p_cite = sub.add_parser("cite", help="Format references for a search (no LLM calls)")
     p_cite.add_argument("query")
     p_cite.add_argument("-n", "--limit", type=int, default=5)
     p_cite.add_argument("--style", choices=STYLE_CHOICES, default=DEFAULT_STYLE)
+    p_cite.add_argument("--loose", action="store_true", help="Skip the title-match filter")
 
     p_quotes = sub.add_parser("quotes", help="Pull quotable passages with citations")
     p_quotes.add_argument("query")
@@ -72,6 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-fulltext", action="store_true",
         help="Quote from abstracts only; don't download PDFs for page numbers",
     )
+    p_quotes.add_argument("--loose", action="store_true", help="Skip the title-match filter")
 
     p_data = sub.add_parser("data", help="Extract numbers from papers + compare chart")
     p_data.add_argument("query")
@@ -116,7 +126,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "search":
         from .sources import search
 
-        for p in search(args.query, limit=args.limit):
+        papers = search(args.query, limit=args.limit, strict=not args.loose)
+        if not papers:
+            print("No papers matched. Try broader words, or add --loose.")
+            return 1
+        for p in papers:
             cites = f" · {p.citations} cites" if p.citations is not None else ""
             pdf = " · PDF" if p.pdf_url else ""
             print(f"- [{p.source}{cites}{pdf}] {p.title} ({p.year})")
@@ -127,9 +141,9 @@ def main(argv: list[str] | None = None) -> int:
         from .citations import format_reference, in_text
         from .sources import search
 
-        papers = search(args.query, limit=args.limit)
+        papers = search(args.query, limit=args.limit, strict=not args.loose)
         if not papers:
-            print("No papers found. Try a broader query.")
+            print("No papers matched. Try broader words, or add --loose.")
             return 1
         print(f"References ({args.style}):\n")
         for i, p in enumerate(papers, start=1):
@@ -179,7 +193,10 @@ def main(argv: list[str] | None = None) -> int:
         from .passages import extract_passages
         from .sources import search
 
-        papers = search(args.query, limit=args.limit)
+        papers = search(args.query, limit=args.limit, strict=not args.loose)
+        if not papers:
+            print("No papers matched. Try broader words, or add --loose.")
+            return 1
         for i, p in enumerate(papers, start=1):
             quotes = extract_passages(
                 p, focus=args.focus, style=args.style, n=3, number=i,
@@ -202,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
 
         result = run(
             args.question, limit=args.limit, sources_list=args.source,
-            style=args.style, quotes=args.quotes,
+            style=args.style, quotes=args.quotes, strict=not args.loose,
         )
         print(f"\nSynthesis:\n{result['synthesis']}\n")
         print(f"Report written to: {result['report']}")
@@ -242,6 +259,15 @@ def _doctor() -> int:
         except ImportError:
             ok = False
             print(f"[!!] {mod} missing ({label}) - run: pip install -r requirements.txt")
+
+    # Optional: nltk/WordNet widens synonym matching in the relevance filter.
+    # Word-forms and common synonyms work without it.
+    try:
+        __import__("nltk")
+        print("[ok] nltk installed (broader synonym matching, optional)")
+    except ImportError:
+        print("[--] nltk not installed (optional) - basic synonyms still work; "
+              "'pip install nltk' widens them")
 
     if has_api_key():
         print("[ok] Anthropic API key found (AI features enabled)")
