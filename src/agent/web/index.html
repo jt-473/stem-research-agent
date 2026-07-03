@@ -85,10 +85,6 @@
           <option>5</option><option selected>10</option><option>15</option><option>25</option>
         </select>
       </div>
-      <div>
-        <label for="yearFrom">From year (optional)</label>
-        <input type="number" id="yearFrom" placeholder="e.g. 2018" min="1900" max="2100">
-      </div>
     </div>
     <button id="go">Find papers</button>
     <span id="status" class="spinner"></span>
@@ -170,8 +166,7 @@ function render(data) {
     });
     box.appendChild(card);
   } else {
-    box.appendChild(el("div", "notice", "No papers matched. Try broader keywords, "
-      + "or loosen the From-year filter."));
+    box.appendChild(el("div", "notice", "No papers matched. Try broader keywords."));
   }
 }
 
@@ -189,7 +184,6 @@ async function go() {
         style: $("style").value,
         sort: $("sort").value,
         limit: parseInt($("limit").value, 10),
-        year_from: $("yearFrom").value || null,
       }),
     });
     render(await resp.json());

@@ -344,7 +344,6 @@ def search(
     sources: list[str] | None = None,
     strict: bool = True,
     sort: str = "relevance",
-    year_from: int | None = None,
 ) -> list[Paper]:
     """Search every requested source and merge the results.
 
@@ -355,15 +354,13 @@ def search(
     - ``strict`` (default on): drop papers whose title doesn't contain every
       meaningful query word (or a synonym / word-form).
     - ``sort``: one of relevance / newest / oldest / cited.
-    - ``year_from``: keep only papers published in or after this year.
     """
     from . import cache
 
     sources = sources or DEFAULT_SOURCES
     sort = sort if sort in SORT_OPTIONS else "relevance"
     cache_key = (
-        f"{query}|{limit}|{','.join(sorted(sources))}|strict={strict}"
-        f"|sort={sort}|from={year_from}"
+        f"{query}|{limit}|{','.join(sorted(sources))}|strict={strict}|sort={sort}"
     )
     cached = cache.get("search", cache_key)
     if cached is not None:
@@ -402,9 +399,6 @@ def search(
                 f"[filter] kept {len(merged)} of {before} results whose title "
                 f"matches '{query}' (use --loose to include the rest)"
             )
-
-    if year_from is not None:
-        merged = [p for p in merged if p.year is not None and p.year >= year_from]
 
     merged = _sort_papers(merged, sort)
 

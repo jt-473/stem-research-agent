@@ -25,11 +25,7 @@ def _add_search_options(p) -> None:
     )
     p.add_argument(
         "--sort", choices=SORT_OPTIONS, default="relevance",
-        help="Order results: relevance, newest, oldest, or cited",
-    )
-    p.add_argument(
-        "--year-from", type=int, default=None, metavar="YEAR",
-        help="Only papers published in or after this year",
+        help="Order results: relevance, newest (latest first), oldest, or cited",
     )
 
 
@@ -86,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
 
         papers = search(
             args.query, limit=args.limit, strict=not args.loose,
-            sort=args.sort, year_from=args.year_from,
+            sort=args.sort,
         )
         if not papers:
             print("No papers matched. Try broader words, or add --loose.")
@@ -104,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
 
         papers = search(
             args.query, limit=args.limit, strict=not args.loose,
-            sort=args.sort, year_from=args.year_from,
+            sort=args.sort,
         )
         if not papers:
             print("No papers matched. Try broader words, or add --loose.")

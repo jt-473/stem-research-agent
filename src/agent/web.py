@@ -90,15 +90,11 @@ class Handler(BaseHTTPRequestHandler):
             limit = max(1, min(25, int(req.get("limit", 8))))
         except (TypeError, ValueError):
             limit = 8
-        try:
-            year_from = int(req["year_from"]) if req.get("year_from") else None
-        except (TypeError, ValueError):
-            year_from = None
 
         try:
             from .sources import search
 
-            papers = search(question, limit=limit, sort=sort, year_from=year_from)
+            papers = search(question, limit=limit, sort=sort)
             self._send_json(
                 {
                     "style": style,
